@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    /* Output */
+    "outDir": "dist",
+    "rootDir": "src",
+
+    /* Language & emit */
+    "target": "es2020",               // modern JS, matches Node 18+
+    "module": "commonjs",             // compile to CommonJS (no .js suffix headaches)
+    "moduleResolution": "Node",       // classic Node resolution
+    "resolveJsonModule": true,
+
+    /* Strictness */
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Interop */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
+    /* Type checking */
+    "isolatedModules": true,
+    "noEmitOnError": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}
