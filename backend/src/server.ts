@@ -15,7 +15,9 @@ import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import { config as loadEnv } from "dotenv";
 
-loadEnv(); // load .env first
+// Explicit path so it always loads backend/.env regardless of where
+// the process is started from (dev, dist, tsx runner, etc.)
+loadEnv({ path: path.resolve(process.cwd(), ".env") });
 
 // ── Config ────────────────────────────────────────────────────────────────────
 import { UPLOAD_DIR as CFG_UPLOAD_DIR } from "./config/storage";
