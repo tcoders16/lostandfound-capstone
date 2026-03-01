@@ -11,7 +11,8 @@ import { PineconeService } from "../../services/pinecone/pineconeService";
 import { generateCollectionToken } from "../../lib/tokenGenerator";
 
 // ── Threshold for auto-creating a pending match ────────────────────────────
-const MATCH_THRESHOLD = 0.80; // 80%+ → send to admin for review
+// Lowered to 0.65 to reduce false negatives when language varies slightly.
+const MATCH_THRESHOLD = 0.65;
 
 const CreateClaimSchema = z.object({
   description: z.string().min(5, "Description too short"),
@@ -42,7 +43,9 @@ export async function createClaim(
     let hasMatch = false;
 
     try {
-      const searchQuery = [body.description, body.locationName].filter(Boolean).join(" ");
+      // Build a rich query without the category prefix and with location if present
+      const cleanedDesc = body.description.replace(/^\[[^\]]+]\s*/i, "").trim();
+      const searchQuery = [cleanedDesc, body.locationName].filter(Boolean).join(" ");
       const results = await searchAnalysedItems(searchQuery, 5);
 
       // Track top match for chat session
@@ -84,6 +87,10 @@ export async function createClaim(
     }
 
     // 3. Create ChatSession for this claim
+    // Extract category from "[category] description" prefix written by frontend
+    const categoryMatch = body.description.match(/^\[([a-z]+)\]/i);
+    const category = categoryMatch ? categoryMatch[1].toLowerCase() : "other";
+
     const sessionId = `session-${Date.now()}-${uuidv4().slice(0, 8)}`;
     await ChatSessionModel.create({
       sessionId,
@@ -99,6 +106,7 @@ export async function createClaim(
       messages: [],
       questionsAsked: 0,
       maxQuestions: 6,
+      category,  // drives item-aware question selection in chat orchestrator
     });
 
     // Flag for manual review if no auto matches were found
