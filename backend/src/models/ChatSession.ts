@@ -4,7 +4,21 @@ import { mongoose } from "../db/mongo";
 const MessageSchema = new mongoose.Schema({
   role:         { type: String, enum: ["assistant","user"], required: true },
   content:      { type: String, required: true },
-  questionType: { type: String, enum: ["color","features","location","age","serial","conflict","other"], default: "other" },
+  questionType: {
+    type: String,
+    enum: [
+      // legacy types (kept for backward compat)
+      "color","features","age",
+      // new category-specific types from chatOrchestrationService
+      "appearance","damage","identity","extras",       // electronics
+      "brand","contents",                              // clothing / accessory
+      "doc_type","container","other_items",            // document
+      "distinctive","markings","material",             // other / accessory
+      // always-present
+      "location","serial","conflict","other",
+    ],
+    default: "other",
+  },
   timestamp:    { type: Date, default: Date.now },
 }, { _id: false });
 
@@ -16,7 +30,7 @@ const ChatSessionSchema = new mongoose.Schema({
   currentScore:         { type: Number, default: 0 },
   status: {
     type: String,
-    enum: ["searching","chatting","completed","no_match","conflict"],
+    enum: ["searching","chatting","completed","no_match","conflict","cancelled"],
     default: "searching",
   },
   conflictGroup:        { type: String, default: null },  // UUID shared by conflicting matches
@@ -28,6 +42,7 @@ const ChatSessionSchema = new mongoose.Schema({
   riderOriginalDesc:    { type: String, default: "" },
   riderName:            { type: String, default: "" },
   riderEmail:           { type: String, default: "" },
+  category:             { type: String, default: "other" }, // extracted from [category] prefix in description
 }, { timestamps: true });
 
 export const ChatSessionModel =

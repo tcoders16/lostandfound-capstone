@@ -34,5 +34,12 @@ export async function connectMongo(
   
 }
 
+/** Gracefully disconnect (used by tests/seed scripts) */
+export async function disconnectMongo() {
+  if (!isConnected) return;
+  await mongoose.connection.close();
+  isConnected = false;
+}
+
 /** Export mongoose itself for schema/model use */
 export { mongoose };
