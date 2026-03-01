@@ -295,7 +295,7 @@ export type ChatSessionState = {
   foundItemId: string | null;
   initialScore: number;
   currentScore: number;
-  status: "searching" | "chatting" | "completed" | "no_match" | "conflict";
+  status: "searching" | "chatting" | "completed" | "no_match" | "conflict" | "cancelled";
   conflictGroup: string | null;
   messages: Array<{ role: "assistant" | "user"; content: string; questionType: string; timestamp: string }>;
   enrichedDescription: string;
@@ -312,7 +312,7 @@ export async function getChatSession(sessionId: string): Promise<{ ok: true; ses
 
 /** POST /api/chat/sessions/:sessionId/next — get next AI question */
 export async function chatGetNextQuestion(sessionId: string): Promise<{
-  ok: boolean; question?: string; questionType?: string; done: boolean; status?: string;
+  ok: boolean; question?: string; questionType?: string; done: boolean; status?: string; ticketRef?: string | null;
 }> {
   const res = await fetch(toURL(`/api/chat/sessions/${encodeURIComponent(sessionId)}/next`), {
     method: "POST",
@@ -339,6 +339,17 @@ export async function chatSubmitAnswer(sessionId: string, answer: string): Promi
     body: JSON.stringify({ answer }),
   });
   if (!res.ok) throw new Error(`Answer error ${res.status}`);
+  return res.json();
+}
+
+/** POST /api/chat/sessions/:sessionId/cancel — rider cancels chat */
+export async function chatCancelSession(sessionId: string): Promise<{ ok: boolean; status: string }> {
+  const res = await fetch(toURL(`/api/chat/sessions/${encodeURIComponent(sessionId)}/cancel`), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(`Cancel error ${res.status}`);
   return res.json();
 }
 

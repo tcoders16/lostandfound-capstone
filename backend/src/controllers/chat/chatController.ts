@@ -30,8 +30,14 @@ export async function getNextQuestion(
   try {
     const session = await ChatSessionModel.findOne({ sessionId: req.params.sessionId });
     if (!session) return reply.code(404).send({ ok: false, error: "Session not found" });
-    if (session.status === "completed" || session.status === "no_match") {
-      return reply.send({ ok: true, done: true, status: session.status });
+    if (session.status === "completed" || session.status === "no_match" || session.status === "cancelled") {
+      // Return ticket reference so the frontend can display the confirmation screen
+      let ticketRef: string | null = null;
+      try {
+        const pendingMatch = await PendingMatchModel.findOne({ claimId: session.claimId }).lean();
+        ticketRef = (pendingMatch as any)?.matchId ?? null;
+      } catch { /* non-fatal */ }
+      return reply.send({ ok: true, done: true, status: session.status, ticketRef });
     }
 
     const { question, questionType, done } = await generateNextQuestion({
@@ -42,17 +48,27 @@ export async function getNextQuestion(
       conflictGroup: session.conflictGroup,
       riderOriginalDesc: session.riderOriginalDesc,
       status: session.status,
+      category: (session as any).category ?? "other",  // item-aware question routing
     });
 
     if (done) {
       session.status = session.currentScore >= MATCH_THRESHOLD ? "completed" : "no_match";
       await session.save();
-      return reply.send({ ok: true, done: true, status: session.status });
+
+      // Look up the PendingMatch to return a ticket reference to the frontend
+      let ticketRef: string | null = null;
+      try {
+        const pendingMatch = await PendingMatchModel.findOne({ claimId: session.claimId }).lean();
+        ticketRef = (pendingMatch as any)?.matchId ?? null;
+      } catch { /* non-fatal */ }
+
+      return reply.send({ ok: true, done: true, status: session.status, ticketRef });
     }
 
     // Push assistant question to messages
     (session.messages as any).push({ role: "assistant", content: question, questionType });
-    session.questionsAsked += 1;
+    // Sync questionsAsked from actual message count so the counter can never desync
+    session.questionsAsked = (session.messages as any).filter((m: any) => m.role === "assistant").length;
     session.status = "chatting";
     await session.save();
 
@@ -85,7 +101,19 @@ export async function submitAnswer(
     // Re-embed + re-search Pinecone with enriched description
     const results = await reEmbedAndSearch(session.enrichedDescription, session.riderOriginalDesc, 5);
     const topMatch = results[0];
-    const newScore = topMatch?.score ?? 0;
+    const pineconeScore = topMatch?.score ?? 0;
+
+    // ── Confidence score formula ────────────────────────────────────────────
+    // Primary signal:  Pinecone cosine similarity (0–1) after re-embedding
+    //                  with all answers appended to the original description.
+    // Engagement bonus: +1.2% per question answered (max +7.2% over 6 Qs).
+    //                  Rewards the rider for providing details even when the
+    //                  vector similarity hasn't quite crossed the threshold.
+    // Always-increasing: displayed score never goes DOWN during a session,
+    //                  so the UX progress bar always moves right.
+    const questionBonus = Math.min(0.012 * (session.questionsAsked + 1), 0.072);
+    const boostedScore  = pineconeScore + questionBonus;
+    const newScore      = Math.min(0.99, Math.max(session.currentScore, boostedScore));
     session.currentScore = newScore;
 
     // Store enriched claim vector in Pinecone
@@ -102,8 +130,8 @@ export async function submitAnswer(
     let matchFound = false;
     let conflictDetected = false;
 
-    // Check if score now meets threshold
-    if (newScore >= MATCH_THRESHOLD && topMatch) {
+    // Check if score now meets threshold (use raw Pinecone score — not boosted display score)
+    if (pineconeScore >= MATCH_THRESHOLD && topMatch) {
       // Check for conflict: does this found item already have a pending match?
       const existingMatch = await PendingMatchModel.findOne({
         foundItemId: topMatch.id,
@@ -201,14 +229,38 @@ export async function submitAnswer(
   }
 }
 
+/** POST /api/chat/sessions/:sessionId/cancel — rider cancels chat */
+export async function cancelSession(
+  req: FastifyRequest<{ Params: { sessionId: string } }>,
+  reply: FastifyReply
+) {
+  try {
+    const session = await ChatSessionModel.findOne({ sessionId: req.params.sessionId });
+    if (!session) return reply.code(404).send({ ok: false, error: "Session not found" });
+
+    session.status = "cancelled";
+    await session.save();
+
+    // Flag claim for manual review
+    await ClaimModel.findOneAndUpdate(
+      { claimId: session.claimId },
+      { $set: { manualReviewRequired: true } }
+    );
+
+    return reply.send({ ok: true, status: "cancelled" });
+  } catch (err: any) {
+    return reply.code(500).send({ ok: false, error: err.message });
+  }
+}
+
 /** GET /api/chat/manual — admin: list no-match claims for manual review */
 export async function listManualQueue(
   _req: FastifyRequest,
   reply: FastifyReply
 ) {
   try {
-    // Claims that have no PendingMatch AND their session is no_match or they have no session
-    const noMatchSessions = await ChatSessionModel.find({ status: "no_match" }).lean();
+    // Claims that have no PendingMatch AND their session is no_match/cancelled or they have no session
+    const noMatchSessions = await ChatSessionModel.find({ status: { $in: ["no_match","cancelled"] } }).lean();
     const claimIds = noMatchSessions.map((s: any) => s.claimId);
 
     const claims = await ClaimModel.find({ claimId: { $in: claimIds } }).lean();

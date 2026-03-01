@@ -2,12 +2,16 @@ import { z } from "zod";
 import dotenv from "dotenv";
 import path from "node:path";
 
-// Load environment variables from .env file into process.env
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
-console.log("Environment variables loaded.", `NODE_ENV=${process.env.NODE_ENV}`);
-console.log("Environment variables loaded.", `OPENAI_API_KEY=${process.env.OPENAI_API_KEY}`);
-console.log("Environment variables loaded.", `PINECONE_API_KEY=${process.env.PINECONE_API_KEY}`);
-console.log("Environment variables loaded.", `MONGODB_URI=${process.env.MONGODB_URI}`)
+// Load environment variables from backend root .env (process.cwd() = backend/ when run via nodemon)
+// Do NOT use __dirname here — that resolves to backend/src/api/ and would pick up the wrong .env
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+
+if (process.env.NODE_ENV !== "production") {
+  const maskedOpenAI = process.env.OPENAI_API_KEY
+    ? process.env.OPENAI_API_KEY.slice(0, 12) + "…" + process.env.OPENAI_API_KEY.slice(-4)
+    : "(missing)";
+  console.log(`[env] Loaded .env — OPENAI_KEY=${maskedOpenAI}  MONGO=${process.env.MONGODB_URI?.slice(0, 30)}…`);
+}
 
 // Define schema for all environment variables
 const schema = z.object({

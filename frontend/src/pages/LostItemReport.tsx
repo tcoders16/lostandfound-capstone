@@ -278,29 +278,54 @@ const StepContact = memo(function StepContact(p: ContactProps) {
 });
 
 /* ── Done ─────────────────────────────────────────────────────────── */
-function StepDone({ claimId, email }: { claimId: string; email: string }) {
+function StepDone({ claimId, matchId, email }: { claimId: string; matchId: string; email: string }) {
+  const ticketDisplay = matchId || claimId;
   return (
     <div style={{ textAlign:"center", padding:"16px 0 8px" }} className="fade-up">
-      <div style={{ width:72,height:72,borderRadius:"50%",background:"var(--green-light)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 24px" }}>
-        <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#006341" strokeWidth={2.5}>
+      {/* Big green check */}
+      <div style={{ width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#006341,#00835a)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 24px",boxShadow:"0 0 0 10px rgba(0,99,65,.12),0 0 0 20px rgba(0,99,65,.06)" }}>
+        <svg width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="#fff" strokeWidth={2.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
         </svg>
       </div>
       <h2 style={{ fontFamily:"'Chakra Petch',sans-serif", fontWeight:700, fontSize:24, color:"var(--navy)", marginBottom:6 }}>
         Match Under Review
       </h2>
-      <p style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:"var(--text-muted)", marginBottom:4 }}>Reference number:</p>
-      <code style={{ fontFamily:"'Chakra Petch',sans-serif", fontSize:13, fontWeight:600, color:"var(--green)", background:"var(--green-light)", padding:"4px 12px", borderRadius:6 }}>
-        {claimId}
-      </code>
-      <p style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:"var(--text-muted)", maxWidth:400, margin:"20px auto 0" }}>
-        Our team is reviewing the potential match. If confirmed, you'll receive{email?` an email at ${email}`:" a call"} within 48 hours.
+      <p style={{ fontFamily:"'Inter',sans-serif", fontSize:14, color:"var(--text-muted)", marginBottom:16 }}>
+        Our team is reviewing the AI-verified match. If confirmed,{" "}
+        you'll receive{email ? ` an email at ${email}` : " a call"} within 48 hours.
       </p>
-      <div style={{ background:"var(--white)", border:"1px solid var(--border)", borderRadius:14, padding:"20px 24px", maxWidth:420, margin:"28px auto", textAlign:"left" }}>
+
+      {/* Ticket reference block */}
+      <div style={{ background:"var(--green-light)", border:"1.5px solid #b6ddc9", borderRadius:14, padding:"20px 24px", maxWidth:420, margin:"0 auto 24px" }}>
+        <p style={{ fontFamily:"'Chakra Petch',sans-serif", fontWeight:600, fontSize:11, letterSpacing:".08em", textTransform:"uppercase", color:"var(--green)", marginBottom:10 }}>
+          Your Pending Ticket Reference
+        </p>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+          <code style={{ fontFamily:"'Chakra Petch',sans-serif", fontSize:13, fontWeight:700, color:"var(--green)", background:"rgba(0,99,65,.1)", padding:"8px 16px", borderRadius:8, letterSpacing:".04em", wordBreak:"break-all" }}>
+            {ticketDisplay}
+          </code>
+          <button
+            title="Copy"
+            onClick={() => navigator.clipboard?.writeText(ticketDisplay).catch(()=>{})}
+            style={{ background:"transparent", border:"none", cursor:"pointer", padding:4 }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth={2}>
+              <rect x="9" y="9" width="13" height="13" rx="2"/>
+              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+            </svg>
+          </button>
+        </div>
+        <p style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:"var(--text-muted)", marginTop:8 }}>
+          Save this — you'll need it when collecting your item.
+        </p>
+      </div>
+
+      <div style={{ background:"var(--white)", border:"1px solid var(--border)", borderRadius:14, padding:"20px 24px", maxWidth:420, margin:"0 auto 24px", textAlign:"left" }}>
         <p style={{ fontFamily:"'Chakra Petch',sans-serif", fontWeight:600, fontSize:12, letterSpacing:".06em", textTransform:"uppercase", color:"var(--text-light)", marginBottom:16 }}>
           What happens next
         </p>
-        {["Staff reviews the AI-matched item within 2 business days","You'll receive a call or email confirming the match","Bring valid government photo ID to collect your item","Items are held for 30 days at the GO Transit Lost & Found office"].map((t,i)=>(
+        {["Staff reviews the AI-matched item within 2 business days","You'll receive a call or email confirming the match","Bring valid government photo ID + this reference to collect your item","Items are held for 30 days at the GO Transit Lost & Found office"].map((t,i)=>(
           <div key={i} style={{ display:"flex", gap:12, marginBottom:12, alignItems:"flex-start" }}>
             <div style={{ width:22,height:22,borderRadius:"50%",background:"var(--green)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1 }}>
               <span style={{ fontFamily:"'Chakra Petch',sans-serif", fontWeight:700, fontSize:11, color:"#fff" }}>{i+1}</span>
@@ -368,6 +393,7 @@ export default function LostItemReport() {
   const [busy,      setBusy]      = useState(false);
   const [err,       setErr]       = useState("");
   const [claimId,   setClaimId]   = useState("");
+  const [matchId,   setMatchId]   = useState("");  // returned by chat on completion
   const [sessionId,    setSessionId]    = useState("");
   const [initialScore, setInitialScore] = useState(0);
   const [hasMatch,     setHasMatch]     = useState(false);
@@ -408,7 +434,8 @@ export default function LostItemReport() {
     }
   }, []);
 
-  const onChatDone = useCallback((r: { status: string }) => {
+  const onChatDone = useCallback((r: { status: string; ticketRef?: string }) => {
+    if (r.ticketRef) setMatchId(r.ticketRef);
     setStep(r.status === "completed" || r.status === "conflict" ? "done" : "manual");
   }, []);
 
@@ -432,6 +459,7 @@ export default function LostItemReport() {
       {step === "chat" && sessionId && (
         <AIChatBox
           sessionId={sessionId}
+          claimId={claimId}
           initialScore={initialScore}
           hasMatch={hasMatch}
           riderName={name}
@@ -493,7 +521,7 @@ export default function LostItemReport() {
                   onBack={goWhere} onSubmit={handleSubmit}
                 />
               )}
-              {step === "done"   && <StepDone   claimId={claimId} email={email} />}
+              {step === "done"   && <StepDone   claimId={claimId} matchId={matchId} email={email} />}
               {step === "manual" && <StepManual claimId={claimId} />}
             </div>
 
